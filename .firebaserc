@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "webconsultapsicologica"
+  },
+  "targets": {
+    "webconsultapsicologica": {
+      "hosting": {
+        "psrodrigovillalobos": [
+          "psrodrigovillalobos"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
