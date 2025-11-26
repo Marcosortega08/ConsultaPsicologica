@@ -1,15 +1,17 @@
+// Import Firebase Authentication
+import { auth } from './firebase-config.js';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
 document.addEventListener('DOMContentLoaded', () => {
     const loginScreen = document.getElementById('loginScreen');
     const dashboardScreen = document.getElementById('dashboardScreen');
     const loginForm = document.getElementById('loginForm');
+    const adminEmailInput = document.getElementById('adminEmail');
     const passwordInput = document.getElementById('password');
     const loginError = document.getElementById('loginError');
     const logoutBtn = document.getElementById('logoutBtn');
     const appointmentsBody = document.getElementById('appointmentsBody');
     const noDataMessage = document.getElementById('noDataMessage');
-
-    // Simple password check (NOT SECURE for production, but okay for demo)
-    const ADMIN_PASSWORD = "admin123";
 
     // Available hours - weekdays: 10:00-20:30, Saturdays: 10:00-13:00 (same as in script.js)
     const availableHours = [
@@ -18,28 +20,54 @@ document.addEventListener('DOMContentLoaded', () => {
         '18:00', '18:30', '19:00', '19:30', '20:00', '20:30'
     ];
 
-    // Check if already logged in
-    if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
-        showDashboard();
-    }
-
-    loginForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const password = passwordInput.value;
-
-        if (password === ADMIN_PASSWORD) {
+    // Check if user is already authenticated with Firebase
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            // User is signed in
             sessionStorage.setItem('isAdminLoggedIn', 'true');
             showDashboard();
-            loginError.style.display = 'none';
         } else {
+            // User is signed out
+            sessionStorage.removeItem('isAdminLoggedIn');
+            loginScreen.style.display = 'block';
+            dashboardScreen.style.display = 'none';
+        }
+    });
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const email = adminEmailInput.value;
+        const password = passwordInput.value;
+
+        loginError.style.display = 'none'; // Hide previous errors
+
+        try {
+            // Sign in with Firebase Authentication
+            await signInWithEmailAndPassword(auth, email, password);
+
+            // If login is successful, Firebase handles authentication state
+            sessionStorage.setItem('isAdminLoggedIn', 'true');
+            adminEmailInput.value = '';
+            passwordInput.value = '';
+            showDashboard();
+
+        } catch (error) {
+            console.error("Firebase Login Error:", error.message);
+            loginError.textContent = "Credenciales incorrectas o usuario no encontrado.";
             loginError.style.display = 'block';
         }
     });
 
-    logoutBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('isAdminLoggedIn');
-        // Redirect to home page
-        window.location.href = 'index.html';
+    logoutBtn.addEventListener('click', async () => {
+        try {
+            await signOut(auth); // Sign out from Firebase
+            sessionStorage.removeItem('isAdminLoggedIn');
+            // Redirect to home page
+            window.location.href = 'index.html';
+        } catch (error) {
+            console.error("Logout Error:", error.message);
+        }
     });
 
     function showDashboard() {

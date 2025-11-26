@@ -1,3 +1,7 @@
+// Import Firebase Authentication
+import { auth } from './firebase-config.js';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
 document.addEventListener('DOMContentLoaded', () => {
     const calendarGrid = document.getElementById('calendarGrid');
     const currentMonthElement = document.getElementById('currentMonth');
@@ -263,25 +267,37 @@ document.addEventListener('DOMContentLoaded', () => {
         allAppointments.push(appointmentDetails);
         localStorage.setItem('allAppointments', JSON.stringify(allAppointments));
 
-        // --- ENVIAR NOTIFICACIÓN POR CORREO (MÉTODO FORMULARIO) ---
+        // Mostrar modal de confirmación
+        const dateOptions = { day: 'numeric', month: 'long' };
+        modalDate.textContent = selectedDate.toLocaleDateString('es-ES', dateOptions);
+        modalTime.textContent = selectedTime;
+        confirmationModal.style.display = 'flex';
+
+        // --- ENVIAR NOTIFICACIÓN POR CORREO EN SEGUNDO PLANO ---
         if (NOTIFICATION_EMAIL && NOTIFICATION_EMAIL.includes('@')) {
-            // Crear un formulario invisible temporalmente
+            // Crear un iframe oculto para enviar el formulario sin redirigir la página principal
+            const iframe = document.createElement('iframe');
+            iframe.name = 'hidden_iframe';
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+
+            // Crear un formulario que se enviará al iframe
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = `https://formsubmit.co/${NOTIFICATION_EMAIL}`;
+            form.target = 'hidden_iframe';
 
             // Datos a enviar
             const fields = {
                 _subject: `Nueva Reserva: ${data.name}`,
                 _template: "table",
                 _captcha: "false",
-                _next: window.location.href, // Redirigir de vuelta a esta página
                 nombre_paciente: data.name,
                 email_paciente: data.email,
                 telefono_paciente: data.phone,
                 fecha_reserva: selectedDate.toLocaleDateString('es-ES'),
                 hora_reserva: selectedTime,
-                motivo_consulta: data.reason
+                motivo_consulta: data.reason || 'No especificado'
             };
 
             // Agregar campos al formulario
@@ -295,16 +311,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.body.appendChild(form);
             form.submit();
-            // No removemos el form porque se va a redirigir
 
-            console.log("Formulario de correo enviado, redirigiendo...");
-        } else {
-            // Show success modal if no email configured
-            const dateOptions = { day: 'numeric', month: 'long' };
-            modalDate.textContent = selectedDate.toLocaleDateString('es-ES', dateOptions);
-            modalTime.textContent = selectedTime;
+            // Limpiar después de 5 segundos
+            setTimeout(() => {
+                document.body.removeChild(form);
+                document.body.removeChild(iframe);
+            }, 5000);
 
-            confirmationModal.style.display = 'flex';
+            console.log("Notificación por correo enviada en segundo plano");
         }
     });
 
@@ -336,18 +350,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeAdminLogin = document.getElementById('closeAdminLogin');
     const closeAdminDashboard = document.getElementById('closeAdminDashboard');
     const adminLoginForm = document.getElementById('adminLoginForm');
+    const adminEmailInput = document.getElementById('adminEmail');
     const adminPasswordInput = document.getElementById('adminPassword');
     const adminLoginError = document.getElementById('adminLoginError');
     const adminLogoutBtn = document.getElementById('adminLogoutBtn');
     const appointmentsBody = document.getElementById('appointmentsBody');
     const noDataMessage = document.getElementById('noDataMessage');
 
-    const ADMIN_PASSWORD = "admin123";
+    // Check if user is already authenticated with Firebase
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            // User is signed in
+            sessionStorage.setItem('isAdminLoggedIn', 'true');
+        } else {
+            // User is signed out
+            sessionStorage.removeItem('isAdminLoggedIn');
+        }
+    });
 
     adminLink.addEventListener('click', (e) => {
         e.preventDefault();
-        // Check if already logged in
-        if (sessionStorage.getItem('isAdminLoggedIn') === 'true') {
+        // Check if user is authenticated with Firebase
+        if (auth.currentUser) {
             showAdminDashboard();
         } else {
             adminLoginModal.style.display = 'flex';
@@ -356,6 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     closeAdminLogin.addEventListener('click', () => {
         adminLoginModal.style.display = 'none';
+        adminEmailInput.value = '';
         adminPasswordInput.value = '';
         adminLoginError.style.display = 'none';
     });
@@ -364,22 +389,40 @@ document.addEventListener('DOMContentLoaded', () => {
         adminDashboardModal.style.display = 'none';
     });
 
-    adminLoginForm.addEventListener('submit', (e) => {
+    adminLoginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        if (adminPasswordInput.value === ADMIN_PASSWORD) {
+
+        const email = adminEmailInput.value;
+        const password = adminPasswordInput.value;
+
+        adminLoginError.style.display = 'none'; // Hide previous errors
+
+        try {
+            // Sign in with Firebase Authentication
+            await signInWithEmailAndPassword(auth, email, password);
+
+            // If login is successful, Firebase handles authentication state
             sessionStorage.setItem('isAdminLoggedIn', 'true');
             adminLoginModal.style.display = 'none';
+            adminEmailInput.value = '';
             adminPasswordInput.value = '';
-            adminLoginError.style.display = 'none';
             showAdminDashboard();
-        } else {
+
+        } catch (error) {
+            console.error("Firebase Login Error:", error.message);
+            adminLoginError.textContent = "Credenciales incorrectas o usuario no encontrado.";
             adminLoginError.style.display = 'block';
         }
     });
 
-    adminLogoutBtn.addEventListener('click', () => {
-        sessionStorage.removeItem('isAdminLoggedIn');
-        adminDashboardModal.style.display = 'none';
+    adminLogoutBtn.addEventListener('click', async () => {
+        try {
+            await signOut(auth); // Sign out from Firebase
+            sessionStorage.removeItem('isAdminLoggedIn');
+            adminDashboardModal.style.display = 'none';
+        } catch (error) {
+            console.error("Logout Error:", error.message);
+        }
     });
 
     function showAdminDashboard() {
